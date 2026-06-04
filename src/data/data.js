@@ -1,0 +1,41 @@
+// Data - 2 topics.
+// Shape: { key, cat, name, icon, hue, docs, blurb,
+//          sections:[{ t, s, d, k:[] }], detail:{ "Skill": { def,dia,code,use,adv,dis,co,alt,vid,iq } } }
+export const dataTopics = [
+{ key: "mongo", cat: "Data", name: "MongoDB", icon: "MDB", hue: "#13aa52", docs: "https://www.mongodb.com/docs/",
+    blurb: "MongoDB is a document database that stores data as flexible, JSON-like documents (BSON) instead of rigid rows and tables. Its schema-less model maps naturally to objects in code, scales horizontally via sharding, and is a core piece of the MERN/MEAN stacks. This track covers documents, querying, aggregation, indexing and schema design.",
+    sections: [
+      { t: "Document Model", s: "How Mongo stores data", d: "2 wks", k: ["Documents, collections, BSON", "Data types", "CRUD operations", "Embedding vs referencing", "Schema design patterns", "Mongoose ODM"] },
+      { t: "Querying", s: "Finding and shaping data", d: "2 wks", k: ["Query operators ($gt, $in)", "Projection", "Sorting and pagination", "Update operators", "Array queries", "Text and geospatial search"] },
+      { t: "Aggregation and Indexes", s: "Analytics and performance", d: "2-3 wks", k: ["Aggregation pipeline", "$match, $group, $lookup", "Indexes and compound indexes", "explain() and query plans", "Performance tuning", "Transactions"] },
+      { t: "Production", s: "Operating MongoDB", d: "2 wks", k: ["Replication and replica sets", "Sharding", "Atlas (managed cloud)", "Backups", "Security and auth", "Change streams"] },
+    ],
+    detail: { "Documents, collections, BSON": {
+      def: "In MongoDB a record is a document: a JSON-like structure of field/value pairs that can nest objects and arrays to any depth. Documents are grouped into collections (rough equivalent of tables), but documents in a collection need not share the same fields, giving a flexible schema. Under the hood documents are stored as BSON (Binary JSON), an efficient binary encoding that adds types like dates, ints and ObjectId. This lets your data mirror the objects in your code, often eliminating joins.",
+      dia: "Database\n +-- Collection: users\n      +-- { _id, name:'Ada', roles:['admin'],\n      |      address:{ city:'London' } } <- document\n      +-- { _id, name:'Linus', roles:['dev'] }\n\nrelational: DB > table > row\nmongo:      DB > collection > document",
+      code: "db.users.insertOne({\n  name: \"Ada\",\n  email: \"ada@x.com\",\n  roles: [\"admin\", \"editor\"],\n  address: { city: \"London\", zip: \"E1\" },\n  createdAt: new Date()\n});\n// find admins in London\ndb.users.find({ roles: \"admin\",\n  \"address.city\": \"London\" });",
+      use: "Content management, user profiles, catalogs, event data, any app whose data shape evolves quickly.",
+      adv: ["Flexible schema adapts to change", "Documents map to code objects", "Embedding avoids many joins", "Scales horizontally (sharding)"],
+      dis: ["Easy to model data poorly", "No joins across shards", "Multi-document transactions heavier", "Duplication can cause drift"],
+      co: "Adobe, eBay, Forbes, and countless startups use MongoDB (often via Atlas).",
+      alt: "PostgreSQL with JSONB, DynamoDB, Couchbase, Firestore.",
+      vid: [{ t: "MongoDB crash course", q: "mongodb crash course beginners" }, { t: "MongoDB in 100 seconds", q: "mongodb in 100 seconds" }, { t: "Mongoose tutorial", q: "mongoose nodejs tutorial" }] , iq: [{"q":"When do you embed vs reference in MongoDB?","a":"Embed when data is read together, bounded in size, and owned by one parent (address in a user). Reference when data is large, shared, or unbounded (a user with many orders) to avoid huge documents."},{"q":"What is BSON and how does it differ from JSON?","a":"BSON is the binary format MongoDB stores. It adds types JSON lacks (ObjectId, Date, 32/64-bit int, binary) and is faster to traverse, at a slightly larger size for some data."},{"q":"Does MongoDB support transactions?","a":"Yes - multi-document ACID transactions since 4.0 for replica sets and 4.2 for sharded clusters, but they are heavier than single-document atomic updates, so model data so most writes touch one document."}] } } },
+{ key: "sql", cat: "Data", name: "SQL and Relational DBs", icon: "SQL", hue: "#5390c0", docs: "https://www.postgresql.org/docs/current/",
+    blurb: "SQL is the universal language for relational databases, where data lives in tables linked by keys and the database guarantees consistency via ACID transactions. Knowing how to model normalized schemas, write efficient joins, and read query plans is foundational for any backend or data role. This track uses PostgreSQL as the reference but applies broadly.",
+    sections: [
+      { t: "SQL Fundamentals", s: "Querying data", d: "2 wks", k: ["SELECT, WHERE, ORDER BY", "Joins and relational modeling", "Aggregates and GROUP BY", "INSERT/UPDATE/DELETE", "Subqueries", "Data types and constraints"] },
+      { t: "Schema Design", s: "Modeling correctly", d: "2 wks", k: ["Primary and foreign keys", "Normalization (1NF-3NF)", "One-to-many and many-to-many", "Constraints and defaults", "Migrations", "ER diagrams"] },
+      { t: "Performance", s: "Fast queries at scale", d: "2-3 wks", k: ["Indexes (B-tree, composite)", "EXPLAIN / query plans", "Transactions and ACID", "Isolation levels and locking", "Views and CTEs", "Window functions"] },
+      { t: "Production", s: "Operating databases", d: "2 wks", k: ["Connection pooling", "Replication", "Backups and recovery", "Partitioning", "Stored procedures", "Security and roles"] },
+    ],
+    detail: { "Joins and relational modeling": {
+      def: "Relational databases split data across tables to avoid duplication, then recombine it on demand using JOINs that match rows by key. An INNER JOIN returns only rows with matches on both sides; a LEFT JOIN returns all left rows plus matches (NULLs where none); RIGHT and FULL extend that. Good relational modeling means each fact lives in exactly one place (normalization) and tables relate via foreign keys, so a JOIN reassembles an order with its customer and line items consistently.",
+      dia: "users               orders\n+----+-------+      +----+---------+-------+\n| id | name  |      | id | user_id | total |\n+----+-------+      +----+---------+-------+\n| 1  | Ada   |<---->| 9  |   1     |  50   |\n| 2  | Linus |      | 10 |   1     |  20   |\n+----+-------+      +----+---------+-------+\n  INNER JOIN ON users.id = orders.user_id",
+      code: "SELECT u.name, o.id AS order_id, o.total\nFROM users u\nINNER JOIN orders o ON o.user_id = u.id\nWHERE o.total > 25\nORDER BY o.total DESC;\n-- LEFT JOIN keeps users with no orders\nSELECT u.name, COUNT(o.id) AS orders\nFROM users u\nLEFT JOIN orders o ON o.user_id = u.id\nGROUP BY u.name;",
+      use: "Virtually every business app: reporting, e-commerce, finance, all rely on joining normalized tables.",
+      adv: ["No data duplication", "Strong consistency via constraints", "Flexible ad-hoc querying", "ACID transactions"],
+      dis: ["Joins slow without indexes", "Rigid schema needs migrations", "Horizontal scaling is harder", "Over-normalization hurts reads"],
+      co: "Banks, e-commerce, SaaS: PostgreSQL/MySQL power most transactional systems.",
+      alt: "Denormalized NoSQL for scale; data warehouses (BigQuery/Snowflake) for analytics.",
+      vid: [{ t: "SQL joins explained", q: "sql joins explained inner left right" }, { t: "SQL full course", q: "sql full course beginners" }, { t: "Database design basics", q: "relational database design normalization tutorial" }] , iq: [{"q":"Explain INNER vs LEFT JOIN.","a":"INNER JOIN returns only rows matching on both sides. LEFT JOIN returns all left rows plus matches, with NULLs where the right side has none - use it to keep rows that may have no related record."},{"q":"What is normalization and when do you denormalize?","a":"Normalization removes redundancy by splitting data into related tables (each fact in one place) for consistency. You denormalize deliberately to speed up reads when joins become the bottleneck."},{"q":"Why can a JOIN be slow and how do you fix it?","a":"Usually a missing index on the join or filter columns forces full scans. Add the right indexes, inspect the plan with EXPLAIN, and select only the columns you need."}] } } },
+];
