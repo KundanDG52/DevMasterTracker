@@ -1,20 +1,11 @@
-import { useState, useMemo, createContext, useContext } from "react";
+import { useState, useMemo, useRef, memo, createContext, useContext } from "react";
 import { TOPICS, CATS } from "./data/index.js";
-
-/* ==========================================================================
-   DEV MASTER TRACKER  -  retro skill roadmap (single file, ASCII-safe)
-   - One file, every topic as a switchable section
-   - Working docs link per topic + working YouTube SEARCH links (never rot)
-   - All code/diagrams are INERT TEXT (never re-evaluated -> no ReferenceErrors)
-   - ASCII-only data + kept small (< 128KB) for fragile JSX previews
-   ========================================================================== */
 
 const yt = (q) => "https://www.youtube.com/results?search_query=" + encodeURIComponent(q);
 const img = (q) => "https://www.google.com/search?tbm=isch&q=" + encodeURIComponent(q);
 const ID = (t, si, ki) => t + "|" + si + "|" + ki;
 
 const FONTS = { mono: "'VT323','Courier New',monospace", head: "'Press Start 2P','VT323',monospace" };
-// dark + light retro palettes (code/diagram panels stay dark in both, like an editor)
 const DARK = {
   bg: "#0d0d0d", panel: "#181818", panel2: "#202020", sidebar: "#080808",
   red: "#ff0033", amber: "#ffb000", green: "#39ff14", cyan: "#00e5ff",
@@ -32,7 +23,6 @@ const LIGHT = {
 const ThemeCtx = createContext(DARK);
 const useT = () => useContext(ThemeCtx);
 
-// inert detail generator for skills without hand-authored detail
 function genDetail(topic, skill) {
   const N = topic.name;
   const s = skill.toLowerCase();
@@ -118,6 +108,7 @@ function RetroStyle() {
     ".dmt-root::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;background:repeating-linear-gradient(0deg," + T.scan + " 0px," + T.scan + " 1px,transparent 1px,transparent 3px);}" +
     ".dmt-root::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9998;background:radial-gradient(ellipse at center,transparent 60%," + T.vignette + " 100%);}" +
     ".dmt-scroll::-webkit-scrollbar{width:10px;height:10px;}.dmt-scroll::-webkit-scrollbar-track{background:#0a0a0a;}.dmt-scroll::-webkit-scrollbar-thumb{background:" + T.red + ";border:2px solid #0a0a0a;}" +
+    ".dmt-scroll{scrollbar-width:thin;scrollbar-color:" + T.red + " #0a0a0a;}" +
     ".dmt-blink{animation:dmtblink 1.1s steps(2,start) infinite;}@keyframes dmtblink{50%{opacity:0;}}" +
     ".dmt-btn{font-family:" + T.mono + ";cursor:pointer;transition:all .12s;}.dmt-btn:hover{transform:translate(-1px,-1px);}" +
     ".dmt-link{color:" + T.cyan + ";text-decoration:none;border-bottom:1px dashed " + T.cyan + ";}.dmt-link:hover{color:" + T.amber + ";border-bottom-color:" + T.amber + ";}";
@@ -195,21 +186,28 @@ function SkillDetail({ topic, skill }) {
   );
 }
 
-function SkillRow({ topic, skill, id, checked, onToggle }) {
+const SkillRow = memo(function SkillRow({ topic, skill, id, checked, onToggle }) {
   const T = useT();
   const [open, setOpen] = useState(false);
-  const on = checked[id];
   return (
     <div style={{ borderBottom: "1px solid " + T.line }}>
       <div onClick={() => setOpen(o => !o)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", cursor: "pointer" }}>
-        <div onClick={e => { e.stopPropagation(); onToggle(id); }} style={{ width: 18, height: 18, border: "2px solid " + (on ? topic.hue : T.mut), flexShrink: 0, background: on ? topic.hue : "transparent" }} />
-        <span style={{ flex: 1, fontSize: 16, color: on ? T.mut : T.text, textDecoration: on ? "line-through" : "none" }}>{skill}</span>
+        <input
+          type="checkbox"
+          id={id}
+          checked={checked}
+          onChange={() => onToggle(id)}
+          onClick={e => e.stopPropagation()}
+          aria-label={"Mark " + skill + " as complete"}
+          style={{ width: 18, height: 18, accentColor: topic.hue, cursor: "pointer", flexShrink: 0 }}
+        />
+        <label htmlFor={id} onClick={e => e.stopPropagation()} style={{ flex: 1, fontSize: 16, color: checked ? T.mut : T.text, textDecoration: checked ? "line-through" : "none", cursor: "pointer" }}>{skill}</label>
         <span style={{ fontSize: 14, color: open ? topic.hue : T.mut }}>{open ? "[-]" : "[+]"}</span>
       </div>
       {open && <div style={{ padding: "0 12px 12px" }}><SkillDetail topic={topic} skill={skill} /></div>}
     </div>
   );
-}
+});
 
 function SectionCard({ topic, si, section, checked, onToggle }) {
   const T = useT();
@@ -227,7 +225,10 @@ function SectionCard({ topic, si, section, checked, onToggle }) {
         <span style={{ fontSize: 15, color: T.mut }}>{open ? "v" : ">"}</span>
       </div>
       <div style={{ height: 4, background: T.track }}><div style={{ height: "100%", width: pct + "%", background: topic.hue, transition: "width .3s" }} /></div>
-      {open && <div>{section.k.map((sk, ki) => <SkillRow key={ki} topic={topic} skill={sk} id={ID(topic.key, si, ki)} checked={checked} onToggle={onToggle} />)}</div>}
+      {open && <div>{section.k.map((sk, ki) => {
+        const id = ID(topic.key, si, ki);
+        return <SkillRow key={ki} topic={topic} skill={sk} id={id} checked={!!checked[id]} onToggle={onToggle} />;
+      })}</div>}
     </div>
   );
 }
@@ -252,21 +253,100 @@ function TopicScreen({ topic, checked, onToggle }) {
   );
 }
 
+function Sidebar({ list, active, setActive, filter, setFilter, mode, toggleMode, checked, onExport, importRef }) {
+  const T = useT();
+
+  const catProgress = useMemo(() => {
+    const map = {};
+    CATS.forEach(cat => {
+      const inCat = TOPICS.filter(t => t.cat === cat);
+      let total = 0, done = 0;
+      inCat.forEach(t => t.sections.forEach((s, si) => s.k.forEach((_, ki) => { total++; if (checked[ID(t.key, si, ki)]) done++; })));
+      map[cat] = { total, done };
+    });
+    return map;
+  }, [checked]);
+
+  const handleKeyDown = (e) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    e.preventDefault();
+    const idx = list.findIndex(t => t.key === active);
+    const next = e.key === "ArrowDown" ? Math.min(idx + 1, list.length - 1) : Math.max(idx - 1, 0);
+    setActive(list[next].key);
+  };
+
+  return (
+    <div className="dmt-scroll" onKeyDown={handleKeyDown} style={{ width: 250, flexShrink: 0, background: T.sidebar, borderRight: "3px solid " + T.red, height: "100vh", position: "sticky", top: 0, overflowY: "auto", padding: "16px 10px" }}>
+      <div style={{ fontFamily: T.head, fontSize: 13, color: T.red, lineHeight: 1.6, marginBottom: 4 }}>DEV<span style={{ color: T.text }}>.</span>MASTER</div>
+      <div style={{ fontSize: 15, color: T.mut, marginBottom: 10 }}>retro skill tracker <span className="dmt-blink" style={{ color: T.green }}>_</span></div>
+      <button className="dmt-btn" onClick={toggleMode} style={{ width: "100%", marginBottom: 6, padding: "6px 9px", fontSize: 14, fontWeight: 700, letterSpacing: 1, border: "2px solid " + T.amber, background: "transparent", color: T.amber }}>{mode === "light" ? "[ DARK MODE ]" : "[ LIGHT MODE ]"}</button>
+      <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
+        <button className="dmt-btn" onClick={onExport} style={{ flex: 1, padding: "5px 4px", fontSize: 12, fontWeight: 700, border: "2px solid " + T.cyan, background: "transparent", color: T.cyan }}>[ EXPORT ]</button>
+        <button className="dmt-btn" onClick={() => importRef.current.click()} style={{ flex: 1, padding: "5px 4px", fontSize: 12, fontWeight: 700, border: "2px solid " + T.green, background: "transparent", color: T.green }}>[ IMPORT ]</button>
+      </div>
+      <input aria-label="Search topics" value={filter} onChange={e => setFilter(e.target.value)} placeholder="search topic..." style={{ width: "100%", background: T.inputBg, color: T.green, border: "2px solid " + T.line, padding: "7px 9px", fontFamily: T.mono, fontSize: 15, marginBottom: 12, outline: "none" }} />
+      {CATS.map(cat => {
+        const items = list.filter(t => t.cat === cat);
+        if (!items.length) return null;
+        const { done, total } = catProgress[cat] || { done: 0, total: 0 };
+        return (
+          <div key={cat} style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 13, color: T.amber, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, borderBottom: "1px dashed " + T.line, paddingBottom: 3, display: "flex", justifyContent: "space-between" }}>
+              <span>{cat}</span>
+              <span style={{ color: done === total && total > 0 ? T.green : T.mut }}>{done}/{total}</span>
+            </div>
+            {items.map(t => (
+              <button key={t.key} className="dmt-btn" onClick={() => setActive(t.key)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", padding: "6px 9px", marginBottom: 3, fontSize: 16, border: "2px solid " + (active === t.key ? t.hue : "transparent"), background: active === t.key ? T.activeBg : "transparent", color: active === t.key ? t.hue : T.text }}>
+                <span style={{ minWidth: 34, fontSize: 12, fontWeight: 700, color: t.hue, textAlign: "center" }}>{t.icon}</span>
+                <span>{t.name}</span>
+              </button>
+            ))}
+          </div>
+        );
+      })}
+      <div style={{ fontSize: 13, color: T.mut, marginTop: 10, borderTop: "1px dashed " + T.line, paddingTop: 8 }}>{TOPICS.length} topics loaded</div>
+    </div>
+  );
+}
 
 export default function DevMasterTracker() {
   const [active, setActive] = useState(TOPICS[0] ? TOPICS[0].key : "");
   const [filter, setFilter] = useState("");
-  const [mode, setMode] = useState(() => { try { return localStorage.getItem("dmt_mode") || "dark"; } catch (e) { return "dark"; } });
+  const [mode, setMode] = useState(() => { try { return localStorage.getItem("dmt_mode") || "dark"; } catch { return "dark"; } });
   const T = mode === "light" ? LIGHT : DARK;
-  const toggleMode = () => setMode(m => { const n = m === "light" ? "dark" : "light"; try { localStorage.setItem("dmt_mode", n); } catch (e) {} return n; });
-  const [checked, setChecked] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("dmt_v2") || "{}"); } catch (e) { return {}; }
-  });
+  const toggleMode = () => setMode(m => { const n = m === "light" ? "dark" : "light"; try { localStorage.setItem("dmt_mode", n); } catch {} return n; });
+  const [checked, setChecked] = useState(() => { try { return JSON.parse(localStorage.getItem("dmt_v2") || "{}"); } catch { return {}; } });
+  const importRef = useRef(null);
+
   const toggle = (id) => setChecked(prev => {
     const next = { ...prev, [id]: !prev[id] };
-    try { localStorage.setItem("dmt_v2", JSON.stringify(next)); } catch (e) {}
+    try { localStorage.setItem("dmt_v2", JSON.stringify(next)); } catch {}
     return next;
   });
+
+  const handleExport = () => {
+    const blob = new Blob([JSON.stringify(checked, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "dmt-progress.json"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        setChecked(data);
+        localStorage.setItem("dmt_v2", JSON.stringify(data));
+      } catch {}
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
   const topic = useMemo(() => TOPICS.find(t => t.key === active) || TOPICS[0], [active]);
   const list = useMemo(() => {
     const f = filter.trim().toLowerCase();
@@ -275,36 +355,16 @@ export default function DevMasterTracker() {
 
   return (
     <ThemeCtx.Provider value={T}>
-    <div className="dmt-root">
-      <RetroStyle />
-      <div style={{ display: "flex", minHeight: "100vh" }}>
-        <div className="dmt-scroll" style={{ width: 250, flexShrink: 0, background: T.sidebar, borderRight: "3px solid " + T.red, height: "100vh", position: "sticky", top: 0, overflowY: "auto", padding: "16px 10px" }}>
-          <div style={{ fontFamily: T.head, fontSize: 13, color: T.red, lineHeight: 1.6, marginBottom: 4 }}>DEV<span style={{ color: T.text }}>.</span>MASTER</div>
-          <div style={{ fontSize: 15, color: T.mut, marginBottom: 10 }}>retro skill tracker <span className="dmt-blink" style={{ color: T.green }}>_</span></div>
-          <button className="dmt-btn" onClick={toggleMode} style={{ width: "100%", marginBottom: 12, padding: "6px 9px", fontSize: 14, fontWeight: 700, letterSpacing: 1, border: "2px solid " + T.amber, background: "transparent", color: T.amber }}>{mode === "light" ? "[ DARK MODE ]" : "[ LIGHT MODE ]"}</button>
-          <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="search topic..." style={{ width: "100%", background: T.inputBg, color: T.green, border: "2px solid " + T.line, padding: "7px 9px", fontFamily: T.mono, fontSize: 15, marginBottom: 12, outline: "none" }} />
-          {CATS.map(cat => {
-            const items = list.filter(t => t.cat === cat);
-            if (!items.length) return null;
-            return (
-              <div key={cat} style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 13, color: T.amber, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, borderBottom: "1px dashed " + T.line, paddingBottom: 3 }}>{cat}</div>
-                {items.map(t => (
-                  <button key={t.key} className="dmt-btn" onClick={() => setActive(t.key)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", padding: "6px 9px", marginBottom: 3, fontSize: 16, border: "2px solid " + (active === t.key ? t.hue : "transparent"), background: active === t.key ? T.activeBg : "transparent", color: active === t.key ? t.hue : T.text }}>
-                    <span style={{ minWidth: 34, fontSize: 12, fontWeight: 700, color: t.hue, textAlign: "center" }}>{t.icon}</span>
-                    <span>{t.name}</span>
-                  </button>
-                ))}
-              </div>
-            );
-          })}
-          <div style={{ fontSize: 13, color: T.mut, marginTop: 10, borderTop: "1px dashed " + T.line, paddingTop: 8 }}>{TOPICS.length} topics loaded</div>
-        </div>
-        <div className="dmt-scroll" style={{ flex: 1, height: "100vh", overflowY: "auto" }}>
-          {topic && <TopicScreen topic={topic} checked={checked} onToggle={toggle} />}
+      <div className="dmt-root">
+        <RetroStyle />
+        <input ref={importRef} type="file" accept=".json" onChange={handleImport} style={{ display: "none" }} aria-hidden="true" />
+        <div style={{ display: "flex", minHeight: "100vh" }}>
+          <Sidebar list={list} active={active} setActive={setActive} filter={filter} setFilter={setFilter} mode={mode} toggleMode={toggleMode} checked={checked} onExport={handleExport} importRef={importRef} />
+          <div className="dmt-scroll" style={{ flex: 1, height: "100vh", overflowY: "auto" }}>
+            {topic && <TopicScreen topic={topic} checked={checked} onToggle={toggle} />}
+          </div>
         </div>
       </div>
-    </div>
     </ThemeCtx.Provider>
   );
 }
